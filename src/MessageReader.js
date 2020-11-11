@@ -190,8 +190,8 @@ const findTypeByName = (types: RosMsgDefinition[], name = ""): NamedRosMsgDefini
     }
     return false;
   });
-  if (matches.length !== 1) {
-    throw new Error(`Expected 1 top level type definition for '${name}' but found ${matches.length}.`);
+  if (matches.length === 0) {
+    throw new Error(`Expected 1 top level type definition for '${name}' but found 0.`);
   }
   return { ...matches[0], name: foundName };
 };
