@@ -1,8 +1,8 @@
 {
-  "name": "rosbag",
-  "version": "2.6.3",
+  "name": "@xviz/rosbag",
+  "version": "3.0.1",
   "license": "Apache-2.0",
-  "repository": "cruise-automation/rosbag.js",
+  "repository": "rosbag.js",
   "dependencies": {
     "buffer": "5.2.1",
     "heap": "0.2.6",

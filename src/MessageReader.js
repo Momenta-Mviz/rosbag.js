@@ -151,13 +151,27 @@ class StandardTypeReader {
   int64() {
     const offset = this.offset;
     this.offset += 8;
-    return int53.readInt64LE(this.buffer, offset);
+    let res;
+    try {
+      res = int53.readInt64LE(this.buffer, offset);
+    } catch (e) {
+      console.log(e);
+    } finally {
+      return res;
+    }
   }
 
   uint64() {
     const offset = this.offset;
     this.offset += 8;
-    return int53.readUInt64LE(this.buffer, offset);
+    let res;
+    try {
+      res = int53.readUInt64LE(this.buffer, offset);
+    } catch (e) {
+      console.log(e);
+    } finally {
+      return res;
+    }
   }
 
   time() {
