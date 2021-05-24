@@ -68,8 +68,9 @@ const buildType = (lines: { isJson: boolean, line: string }[]): RosMsgDefinition
     // remove comments and extra whitespace from each line
     const splits = line
       .replace(/#.*/gi, "")
+      .replace("=", " = ") // Handle the case of missing a space in the enumeration type, e.g. uint8 VRU_PROPERTY_LOCAL_VELOCITY_SIGMA =29
       .split(" ")
-      .filter((word) => word);
+      .filter((word) => word.length > 0);
     if (!splits[1]) {
       return;
     }
