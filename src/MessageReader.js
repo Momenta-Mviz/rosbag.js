@@ -155,7 +155,7 @@ class StandardTypeReader {
     try {
       res = int53.readInt64LE(this.buffer, offset);
     } catch (e) {
-      console.log(e);
+      // console.log(e);
     }
     return res;
   }
@@ -167,7 +167,7 @@ class StandardTypeReader {
     try {
       res = int53.readUInt64LE(this.buffer, offset);
     } catch (e) {
-      console.log(e);
+      // console.log(e);
     }
     return res;
   }
