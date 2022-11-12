@@ -58,7 +58,7 @@ class StandardTypeReader {
   }
 
   json(): mixed {
-    const resultString = this.string();
+    const resultString = this._string();
     try {
       return JSON.parse(resultString);
     } catch {
@@ -67,6 +67,13 @@ class StandardTypeReader {
   }
 
   string() {
+    const len = this.int32();
+    const codePoints = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + this.offset, len);
+    this.offset += len;
+    return codePoints.slice();
+  }
+
+  _string() {
     const len = this.int32();
     const codePoints = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + this.offset, len);
     this.offset += len;
@@ -293,7 +300,7 @@ const createParser = (types: RosMsgDefinition[], freeze: boolean) => {
     throw e;
   }
 
-  return function(buffer: Buffer) {
+  return function (buffer: Buffer) {
     const reader = new StandardTypeReader(buffer);
     return _read(reader);
   };
