@@ -58,7 +58,7 @@ class StandardTypeReader {
   }
 
   json(): mixed {
-    const resultString = this._string();
+    const resultString = this.string();
     try {
       return JSON.parse(resultString);
     } catch {
@@ -66,14 +66,14 @@ class StandardTypeReader {
     }
   }
 
-  string() {
+  _uint8Array_as_string() {
     const len = this.int32();
     const codePoints = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + this.offset, len);
     this.offset += len;
     return codePoints.slice();
   }
 
-  _string() {
+  string() {
     const len = this.int32();
     const codePoints = new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + this.offset, len);
     this.offset += len;
@@ -266,7 +266,12 @@ const createParser = (types: RosMsgDefinition[], freeze: boolean) => {
         const defType = findTypeByName(types, def.type);
         readerLines.push(`this.${def.name} = new Record.${friendlyName(defType.name)}(reader);`);
       } else {
-        readerLines.push(`this.${def.name} = reader.${def.type}();`);
+        if (type.name === "hdmap_msgs/LocalMapLayer") {
+          // hack for localmap
+          readerLines.push(`this.${def.name} = reader._uint8Array_as_string();`);
+        } else {
+          readerLines.push(`this.${def.name} = reader.${def.type}();`);
+        }
       }
     });
     if (freeze) {
@@ -300,7 +305,7 @@ const createParser = (types: RosMsgDefinition[], freeze: boolean) => {
     throw e;
   }
 
-  return function (buffer: Buffer) {
+  return function(buffer: Buffer) {
     const reader = new StandardTypeReader(buffer);
     return _read(reader);
   };
