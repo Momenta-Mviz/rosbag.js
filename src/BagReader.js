@@ -33,10 +33,12 @@ export default class BagReader {
   _lastReadResult: ChunkReadResult;
   _file: Filelike;
   _lastChunkInfo: ?ChunkInfo;
+  _chunkCache: any;
 
   constructor(filelike: Filelike) {
     this._file = filelike;
     this._lastChunkInfo = undefined;
+    this._chunkCache = {};
   }
 
   verifyBagHeader(callback: Callback<BagHeader>, next: () => void) {
@@ -239,6 +241,13 @@ export default class BagReader {
       const lastReadResult = this._lastReadResult;
       return setImmediate(() => callback(null, lastReadResult));
     }
+
+    const idx = chunkInfo.chunkPosition;
+    if (this._chunkCache[idx]) {
+      const res = this._chunkCache[idx];
+      return setImmediate(() => callback(null, res));
+    }
+
     const { nextChunk } = chunkInfo;
 
     const readLength = nextChunk
@@ -269,6 +278,8 @@ export default class BagReader {
 
       this._lastChunkInfo = chunkInfo;
       this._lastReadResult = { chunk, indices };
+      const copiedData = Buffer.from(chunk.data);
+      this._chunkCache[idx] = { chunk: { ...chunk, data: copiedData }, indices };
       return callback(null, this._lastReadResult);
     });
   }
