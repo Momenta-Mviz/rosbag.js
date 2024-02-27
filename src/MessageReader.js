@@ -49,7 +49,7 @@ class StandardTypeReader {
     }
 
     try {
-      this._decoder = new global.TextDecoder("ascii");
+      this._decoder = new global.TextDecoder("utf-8");
       this._decoderStatus = "INITIALIZED";
     } catch (e) {
       // Swallow the error if we don't support ascii encoding.
