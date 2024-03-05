@@ -21,6 +21,8 @@ export type ReadOptions = {|
   startTime?: Time,
   endTime?: Time,
   freeze?: ?boolean,
+  alignment?: string,
+  timeDiffInfo?: any,
 |};
 
 // the high level rosbag interface
@@ -77,7 +79,16 @@ export default class Bag {
     const connections = this.connections;
 
     const startTime = opts.startTime || { sec: 0, nsec: 0 };
-    const endTime = opts.endTime || { sec: Number.MAX_VALUE, nsec: Number.MAX_VALUE };
+    let endTime = opts.endTime || { sec: Number.MAX_VALUE, nsec: Number.MAX_VALUE };
+
+    const st = { ...startTime };
+    const et = { ...endTime };
+
+    const alignment = opts.noParse ? undefined : opts.alignment; // 必须要能解析消息时，才能做对齐
+    // 当有alignment的时候，读数据的时候后找一段（暂定从起始时间向后找0.2s）,期望是能把当前帧egopose对应的fusion和vision包括起来
+    // start time不变
+    if (alignment) endTime = TimeUtil.add(endTime, { sec: 0, nsec: 200000000 });
+
     const topics =
       opts.topics ||
       Object.keys(connections).map((id: any) => {
@@ -112,6 +123,26 @@ export default class Bag {
       return new ReadResult(topic, message, timestamp, data, chunkOffset, chunkInfos.length, opts.freeze);
     }
 
+    const alignmentList = (alignment || "").split(",").filter((i) => i.length > 0);
+    const alignmentCache: any[] = [];
+    const egoposeAlignment: any[] = [];
+
+    const convertUsTime = (usTime) => {
+      const sec = Math.floor(usTime / 1000000);
+      const nsec = Math.floor((usTime % 1000000) * 1000);
+
+      return { sec, nsec };
+    };
+
+    const convertNsTime = (usTime) => {
+      const sec = Math.floor(usTime / 1000000000);
+      const nsec = Math.floor(usTime % 1000000000);
+
+      return { sec, nsec };
+    };
+
+    const local2UtcDiff = convertNsTime(opts.timeDiffInfo ? opts.timeDiffInfo.diff : 0);
+
     for (let i = 0; i < chunkInfos.length; i++) {
       const info = chunkInfos[i];
       const messages = await this.reader.readChunkMessagesAsync(
@@ -121,7 +152,75 @@ export default class Bag {
         endTime,
         decompress
       );
-      messages.forEach((msg) => callback(parseMsg(msg, i)));
+      messages.forEach((msg) => {
+        const readResult = parseMsg(msg, i);
+        if (!alignment) {
+          // 非对齐模式下，正常返回
+          callback(readResult);
+        } else {
+          // 对readResult的落盘时间，按meta时间重新负值
+          const message = readResult.message;
+          if (message.meta && message.meta.sensor_timestamp_us) {
+            const newStamp = TimeUtil.add(convertUsTime(message.meta.sensor_timestamp_us), local2UtcDiff); // local + diff
+            readResult.timestamp = newStamp;
+          } else if (message.meta && message.meta.timestamp_us) {
+            const newStamp = TimeUtil.add(convertUsTime(message.meta.timestamp_us), local2UtcDiff); // local + diff
+            readResult.timestamp = newStamp;
+          }
+
+          if (TimeUtil.compare(readResult.timestamp, st) >= 0 && TimeUtil.compare(readResult.timestamp, et) <= 0) {
+            // 仅缓存更新后时间戳落在目标区域内的readResult
+            const topic = readResult.topic;
+            if (["/mla/egopose", ...alignmentList].includes(topic)) {
+              // egopose单独处理
+              egoposeAlignment.push(readResult);
+            } else {
+              alignmentCache.push(readResult);
+            }
+          }
+        }
+      });
+    }
+
+    if (alignment) {
+      // alignment模式下，对多读进来的数据做处理，吐出去按meta进行排列之后的数据，目标是返回【meta时间落在目标时间内的消息】
+      // 不修改消息中本身的内容（header时间）
+      // 修改readResult中的所有timestamp(落盘时间)
+      // egopose只保留和alignment topic中最后一条消息最近的那一条
+
+      // 找到最后一条alignment
+      const maxAlignment = egoposeAlignment.reduce(
+        (max, item) =>
+          alignmentList.includes(item.topic) &&
+          TimeUtil.isGreaterThan(item.timestamp, max ? max.timestamp : { sec: 0, nsec: 0 })
+            ? item
+            : max,
+        null
+      );
+
+      if (!maxAlignment) return;
+
+      // 向前找到比alignment时间小的最近的egopose
+      const maxEgopose = egoposeAlignment.reduce((max, item) => {
+        return item.topic === "/mla/egopose" &&
+          TimeUtil.isGreaterThan(maxAlignment.timestamp, item.timestamp) &&
+          TimeUtil.isGreaterThan(item.timestamp, max ? max.timestamp : { sec: 0, nsec: 0 })
+          ? item
+          : max;
+      }, null);
+
+      if (maxEgopose) {
+        // 发布egopose，实际表现为抽帧
+        callback(maxEgopose);
+      }
+
+      // 发布所有alignment
+      egoposeAlignment.filter((i) => alignmentList.includes(i.topic)).forEach((j) => callback(j));
+
+      // 发布其他消息
+      [...alignmentCache]
+        .sort((a, b) => (TimeUtil.isGreaterThan(a.timestamp, b.timestamp) ? 1 : -1)) // 发布前先升序
+        .forEach((i) => callback(i));
     }
   }
 }
