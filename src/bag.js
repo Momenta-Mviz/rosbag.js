@@ -23,6 +23,7 @@ export type ReadOptions = {|
   freeze?: ?boolean,
   alignment?: string,
   timeDiffInfo?: any,
+  alignWindow?: number,
 |};
 
 // the high level rosbag interface
@@ -85,9 +86,14 @@ export default class Bag {
     const et = { ...endTime };
 
     const alignment = opts.noParse ? undefined : opts.alignment; // 必须要能解析消息时，才能做对齐
-    // 当有alignment的时候，读数据的时候后找一段（暂定从起始时间向后找0.2s）,期望是能把当前帧egopose对应的fusion和vision包括起来
+    const alignWindow = opts.alignWindow ? opts.alignWindow : 200; // default 200ms
+    // 当有alignment的时候，读数据的时候后找一段（默认从起始时间向后找0.2s）,期望是能把当前帧egopose对应的fusion和vision包括起来
     // start time不变
-    if (alignment) endTime = TimeUtil.add(endTime, { sec: 0, nsec: 200000000 });
+    if (alignment)
+      endTime = TimeUtil.add(endTime, {
+        sec: Math.floor(alignWindow / 1000),
+        nsec: (alignWindow % 1000) * 1000000,
+      });
 
     const topics =
       opts.topics ||
