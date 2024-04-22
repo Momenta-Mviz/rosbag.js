@@ -79,7 +79,7 @@ export default class Bag {
   async readMessages(opts: ReadOptions, callback: (msg: ReadResult<any>) => void) {
     const connections = this.connections;
 
-    const startTime = opts.startTime || { sec: 0, nsec: 0 };
+    let startTime = opts.startTime || { sec: 0, nsec: 0 };
     let endTime = opts.endTime || { sec: Number.MAX_VALUE, nsec: Number.MAX_VALUE };
 
     const st = { ...startTime };
@@ -89,11 +89,14 @@ export default class Bag {
     const alignWindow = opts.alignWindow ? opts.alignWindow : 200; // default 200ms
     // 当有alignment的时候，读数据的时候后找一段（默认从起始时间向后找0.2s）,期望是能把当前帧egopose对应的fusion和vision包括起来
     // start time不变
-    if (alignment)
+    if (alignment) {
+      if (opts.startTime && startTime.sec >= 1) startTime = TimeUtil.add(startTime, { sec: 0, nsec: -200000000 }); // 稍微往前读一点，防止对齐align的时候找不到对应的egopose
+
       endTime = TimeUtil.add(endTime, {
         sec: Math.floor(alignWindow / 1000),
         nsec: (alignWindow % 1000) * 1000000,
       });
+    }
 
     const topics =
       opts.topics ||
@@ -164,7 +167,7 @@ export default class Bag {
           // 非对齐模式下，正常返回
           callback(readResult);
         } else {
-          // 对readResult的落盘时间，按meta时间重新负值
+          // 对readResult的落盘时间，按meta时间重新赋值
           const message = readResult.message;
           if (message.meta && message.meta.sensor_timestamp_us) {
             const newStamp = TimeUtil.add(convertUsTime(message.meta.sensor_timestamp_us), local2UtcDiff); // local + diff
@@ -174,11 +177,19 @@ export default class Bag {
             readResult.timestamp = newStamp;
           }
 
-          if (TimeUtil.compare(readResult.timestamp, st) >= 0 && TimeUtil.compare(readResult.timestamp, et) <= 0) {
+          if (readResult.topic === "/mla/egopose") {
+            // egopose单独处理，全部添加
+            egoposeAlignment.push(readResult);
+          }
+
+          if (
+            readResult.topic !== "/mla/egopose" &&
+            TimeUtil.compare(readResult.timestamp, st) >= 0 &&
+            TimeUtil.compare(readResult.timestamp, et) <= 0
+          ) {
             // 仅缓存更新后时间戳落在目标区域内的readResult
             const topic = readResult.topic;
-            if (["/mla/egopose", ...alignmentList].includes(topic)) {
-              // egopose单独处理
+            if ([...alignmentList].includes(topic)) {
               egoposeAlignment.push(readResult);
             } else {
               alignmentCache.push(readResult);
