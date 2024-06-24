@@ -24,6 +24,10 @@ export type ReadOptions = {|
   alignment?: string,
   timeDiffInfo?: any,
   alignWindow?: number,
+  topicNameProxy?: {
+    prefix: string,
+    suffix: string,
+  },
 |};
 
 // the high level rosbag interface
@@ -98,15 +102,50 @@ export default class Bag {
       });
     }
 
-    const topics =
+    let topics =
       opts.topics ||
       Object.keys(connections).map((id: any) => {
         return connections[id].topic;
       });
 
+    const proxyTopicMap = {};
+    if (opts.topicNameProxy) {
+      // 都为空时直接跳过（好像会有异常，目前还是在前端约束）
+      if (opts.topicNameProxy.prefix.length === 0 && opts.topicNameProxy.suffix.length === 0) return;
+
+      const { prefix = "", suffix = "" } = opts.topicNameProxy;
+
+      const proxyedTopicList = [];
+      // 获取bag中的全量topic
+      const allTopics = Object.keys(connections).map((id: any) => {
+        return connections[id].topic;
+      });
+      // 同时添加prefix和suffix的代理
+      topics.forEach((t) => {
+        // 对于已订阅的topic，检查
+        const proxyName = prefix + t + suffix;
+        if (allTopics.includes(proxyName)) {
+          // 判断是否全量topic里有代理后的，如有，则记录
+          proxyTopicMap[proxyName] = t;
+          proxyedTopicList.push(t);
+        }
+      });
+
+      // 先把被代理的topic移除，不读取
+      topics = topics.filter((t) => proxyedTopicList.includes(t));
+
+      // 然后添加代理topic的读取
+      const proxyTopicList = Object.keys(proxyTopicMap);
+      proxyTopicList.forEach((i) => topics.push(i));
+    }
+
     const filteredConnections = Object.keys(connections)
       .filter((id: any) => {
-        return topics.indexOf(connections[id].topic) !== -1;
+        const proxyTopicList = Object.keys(proxyTopicMap);
+        return (
+          topics.indexOf(connections[id].topic) !== -1 &&
+          (proxyTopicList.length > 0 ? proxyTopicList.indexOf(connections[id].topic) !== -1 : true) // 当有proxy时，还需要筛选带proxy的connection
+        );
       })
       .map((id) => +id);
 
@@ -163,6 +202,14 @@ export default class Bag {
       );
       messages.forEach((msg) => {
         const readResult = parseMsg(msg, i);
+
+        // proxy, 在这里读到代理消息，覆盖被代理消息
+        const proxyTopicList = Object.keys(proxyTopicMap);
+        if (proxyTopicList.length > 0) {
+          const { topic } = readResult;
+          if (proxyTopicMap[topic]) readResult.topic = proxyTopicMap[topic]; // 使用proxy对应的topicname而不是实际读到的
+        }
+
         if (!alignment) {
           // 非对齐模式下，正常返回
           callback(readResult);
