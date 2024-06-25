@@ -132,7 +132,7 @@ export default class Bag {
       });
 
       // 先把被代理的topic移除，不读取
-      topics = topics.filter((t) => proxyedTopicList.includes(t));
+      topics = topics.filter((t) => !proxyedTopicList.includes(t));
 
       // 然后添加代理topic的读取
       const proxyTopicList = Object.keys(proxyTopicMap);
