@@ -141,11 +141,7 @@ export default class Bag {
 
     const filteredConnections = Object.keys(connections)
       .filter((id: any) => {
-        const proxyTopicList = Object.keys(proxyTopicMap);
-        return (
-          topics.indexOf(connections[id].topic) !== -1 &&
-          (proxyTopicList.length > 0 ? proxyTopicList.indexOf(connections[id].topic) !== -1 : true) // 当有proxy时，还需要筛选带proxy的connection
-        );
+        return topics.indexOf(connections[id].topic) !== -1;
       })
       .map((id) => +id);
 
